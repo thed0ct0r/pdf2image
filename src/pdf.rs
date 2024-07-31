@@ -1,9 +1,7 @@
 use image::DynamicImage;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-
 use std::{
     io::Write,
-    path::Path,
     process::{Command, Stdio},
 };
 
@@ -11,51 +9,14 @@ use crate::error::{PDF2ImageError, Result};
 use crate::render_options::RenderOptions;
 use crate::utils::{extract_pdf_info, get_executable_path};
 
-/// A PDF file
-///
-/// This struct wraps the bytes of an PDF and additional information about the PDF, such as the number of pages and whether the PDF is encrypted.
-///
-/// # Usage
-///
-/// ```
-/// use pdf2image::{PDF, Pages, RenderOptionsBuilder};
-///
-/// fn main() -> Result<(), pdf2img::Error> {
-///     let pdf = PDF::from_file("examples/pdfs/ropes.pdf")?;
-///     let rendered_pages = pdf.render(Pages::All, RenderOptionsBuilder::default().build()?)?;
-/// }
-/// ```
-///
-/// # Rationale
-/// Storing the page count prevents calls to `pdfinfo` for every call to `render()`.
-pub struct PDF {
-    data: Vec<u8>,
+pub struct PdfInfo {
+    /// The page count within the pdf
     page_count: u32,
+    /// Whether the PDF is encrypted
     encrypted: bool,
 }
 
-impl PDF {
-    /// Constructs a PDF from bytes.
-    pub fn from_bytes(data: Vec<u8>) -> Result<Self> {
-        let (page_count, encrypted) = extract_pdf_info(&data)?;
-        Ok(Self {
-            data,
-            page_count,
-            encrypted,
-        })
-    }
-
-    /// Constructs a PDF from a PDF file.
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
-        let data = std::fs::read(path)?;
-        let (page_count, encrypted) = extract_pdf_info(&data)?;
-        Ok(Self {
-            data,
-            page_count,
-            encrypted,
-        })
-    }
-
+impl PdfInfo {
     /// Returns the number of pages in the PDF.
     pub fn page_count(&self) -> u32 {
         self.page_count
@@ -65,96 +26,18 @@ impl PDF {
     pub fn is_encrypted(&self) -> bool {
         self.encrypted
     }
+}
 
-    /// Renders the PDF to images.
-    pub fn render(
-        &self,
-        pages: Pages,
-        options: impl Into<Option<RenderOptions>>,
-    ) -> Result<Vec<image::DynamicImage>> {
-        let pages_range: Vec<_> = match pages {
-            Pages::Range(range) => range
-                .filter(|page| {
-                    if *page > self.page_count || *page < 1 {
-                        //eprintln!("Page {} does not exist in the PDF.", page);
-                        false
-                    } else {
-                        true
-                    }
-                })
-                .collect(),
-            Pages::All => (0..=self.page_count).collect(),
-            Pages::Single(page) => (page..page + 1).collect(),
-        };
+impl TryFrom<&[u8]> for PdfInfo {
+    type Error = PDF2ImageError;
 
-        let options = options.into().unwrap_or_default();
+    fn try_from(value: &[u8]) -> std::result::Result<Self, Self::Error> {
+        let (page_count, encrypted) = extract_pdf_info(value)?;
 
-        if self.encrypted && options.password.is_none() {
-            return Err(PDF2ImageError::NoPasswordForEncryptedPDF);
-        }
-
-        let cli_options = options.to_cli_args();
-
-        let executable = get_executable_path(if options.pdftocairo {
-            "pdftocairo"
-        } else {
-            "pdftoppm"
-        });
-
-        let poppler_args = if options.pdftocairo {
-            vec![
-                "-".to_string(),
-                "-".to_string(),
-                "-jpeg".to_string(),
-                "-singlefile".to_string(),
-            ]
-        } else {
-            vec!["-jpeg".to_string(), "-singlefile".to_string()]
-        };
-
-        let images_results: Vec<Result<DynamicImage>> = pages_range
-            .par_iter()
-            .map(|page| {
-                let args = [
-                    poppler_args.clone(),
-                    vec![
-                        "-f".to_string(),
-                        format!("{page}"),
-                        "-l".to_string(),
-                        format!("{page}"),
-                    ],
-                    cli_options.clone(),
-                ]
-                .concat();
-
-                let mut child = Command::new(&executable)
-                    .args(&args)
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .spawn()
-                    .expect("failed to execute process");
-
-                // UNWRAP SAFETY: The child process is guaranteed to have a stdin as .stdin(Stdio::piped()) was called
-                child.stdin.as_mut().unwrap().write_all(&self.data)?;
-
-                let output = child.wait_with_output()?;
-                let image =
-                    image::load_from_memory_with_format(&output.stdout, image::ImageFormat::Jpeg)?;
-
-                Ok(image)
-            })
-            .collect();
-
-        let mut images = Vec::with_capacity(images_results.len());
-
-        for image in images_results {
-            match image {
-                Ok(image) => images.push(image),
-                Err(e) => return Err(e),
-            }
-        }
-
-        Ok(images)
+        Ok(Self {
+            page_count,
+            encrypted,
+        })
     }
 }
 
@@ -164,4 +47,98 @@ pub enum Pages {
     All,
     Range(std::ops::RangeInclusive<u32>),
     Single(u32),
+}
+
+/// Renders the PDF to images.
+pub fn render_pdf(
+    data: &[u8],
+    info: &PdfInfo,
+    pages: Pages,
+    options: impl Into<Option<RenderOptions>>,
+) -> Result<Vec<image::DynamicImage>> {
+    let pages_range: Vec<_> = match pages {
+        Pages::Range(range) => range
+            .filter(|page| {
+                if *page > info.page_count || *page < 1 {
+                    //eprintln!("Page {} does not exist in the PDF.", page);
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect(),
+        Pages::All => (0..=info.page_count).collect(),
+        Pages::Single(page) => (page..page + 1).collect(),
+    };
+
+    let options: RenderOptions = options.into().unwrap_or_default();
+
+    if info.encrypted && options.password.is_none() {
+        return Err(PDF2ImageError::NoPasswordForEncryptedPDF);
+    }
+
+    let cli_options = options.to_cli_args();
+
+    let executable = get_executable_path(if options.pdftocairo {
+        "pdftocairo"
+    } else {
+        "pdftoppm"
+    });
+
+    let poppler_args: &[&str] = if options.pdftocairo {
+        &["-", "-", "-jpeg", "-singlefile"]
+    } else {
+        &["-jpeg", "-singlefile"]
+    };
+
+    let images_results: Vec<Result<DynamicImage>> = pages_range
+        .par_iter()
+        .map(|page| render_page(data, *page, &executable, poppler_args, &cli_options))
+        .collect();
+
+    let mut images = Vec::with_capacity(images_results.len());
+
+    for image in images_results {
+        match image {
+            Ok(image) => images.push(image),
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(images)
+}
+
+/// Renders a specific page from the pdf file
+fn render_page(
+    data: &[u8],
+    page: u32,
+    executable: &str,
+    poppler_args: &[&str],
+    cli_options: &[String],
+) -> Result<image::DynamicImage> {
+    let mut child = Command::new(executable)
+        // Add the poppler args
+        .args(poppler_args)
+        // Add the page args
+        .args([
+            "-f".to_string(),
+            format!("{page}"),
+            "-l".to_string(),
+            format!("{page}"),
+        ])
+        // Add the cli options
+        .args(cli_options)
+        // Pipe input and output for use
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to execute process");
+
+    // UNWRAP SAFETY: The child process is guaranteed to have a stdin as .stdin(Stdio::piped()) was called
+    child.stdin.as_mut().unwrap().write_all(data)?;
+
+    let output = child.wait_with_output()?;
+    let image = image::load_from_memory_with_format(&output.stdout, image::ImageFormat::Jpeg)?;
+
+    Ok(image)
 }

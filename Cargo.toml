@@ -5,8 +5,8 @@ edition = "2021"
 readme = "README.md"
 license = "MIT"
 description = "A simplified port of Python's pdf2image that wraps pdftoppm and pdftocairo to convert PDFs into images."
-homepage = "https://github.com/styrowolf/pdf2image"
-repository = "https://github.com/styrowolf/pdf2image"
+homepage = "https://github.com/jacobtread/pdf2image"
+repository = "https://github.com/jacobtread/pdf2image"
 keywords = ["pdf", "image", "conversion", "poppler", "pdf2img"]
 categories = [
     "multimedia",
