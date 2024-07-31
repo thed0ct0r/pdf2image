@@ -8,29 +8,24 @@
 //! ## Quick Start
 //!
 //! ```rust
-//! use pdf2image::{PDF2ImageError, RenderOptionsBuilder, PdfInfo, render_pdf};
+//! use pdf2image::{PDF2ImageError, RenderOptionsBuilder, PdfInfo, render_pdf_multi_page};
 //!
 //! fn main() -> Result<(), PDF2ImageError> {
 //!     let data = std::fs::read("examples/pdfs/ropes.pdf").unwrap();
 //!     let pdf_info = PdfInfo::try_from(data.as_slice()).unwrap();
-//!     let pages = render_pdf(
-//!         &data,
-//!         &pdf_info,
-//!         pdf2image::Pages::Range(1..=8),
-//!         RenderOptionsBuilder::default().build()?,
-//!     );
-//!     println!("{:?}", pages.unwrap().len());
+//!     let options = RenderOptionsBuilder::default().pdftocairo(true).build()?;
+//!     let pages = render_pdf_multi_page(&data, &pdf_info, pdf2image::Pages::Range(1..=8), &options);
 //!
 //!     Ok(())
 //! }
 //! ```
+
 mod error;
 mod pdf;
 mod render_options;
-mod utils;
 
 pub use error::{PDF2ImageError, Result};
-pub use pdf::{render_pdf, Pages, PdfInfo};
+pub use pdf::{render_pdf_multi_page, render_pdf_single_page, Pages, PdfInfo};
 pub use render_options::{Crop, Password, RenderOptions, RenderOptionsBuilder, Scale, DPI};
 
 // re-export image crate
