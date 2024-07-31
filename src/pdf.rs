@@ -75,10 +75,7 @@ impl PDF {
         let pages_range: Vec<_> = match pages {
             Pages::Range(range) => range
                 .filter(|page| {
-                    if *page > self.page_count {
-                        //eprintln!("Page {} does not exist in the PDF.", page);
-                        false
-                    } else if *page < 1 {
+                    if *page > self.page_count || *page < 1 {
                         //eprintln!("Page {} does not exist in the PDF.", page);
                         false
                     } else {

@@ -1,22 +1,22 @@
-#[derive(derive_builder::Builder)]
 /// Options for rendering PDFs
+#[derive(derive_builder::Builder)]
 pub struct RenderOptions {
     #[builder(default = "DPI::Uniform(150)")]
-    /** Resolution in dots per inch */
+    /// Resolution in dots per inch
     pub resolution: DPI,
     #[builder(setter(into, strip_option), default)]
-    /** Scale pages to a certain number of pixels */
+    /// Scale pages to a certain number of pixels
     pub scale: Option<Scale>,
     #[builder(default)]
-    /** Render pages in grayscale */
+    /// Render pages in grayscale
     pub greyscale: bool,
     #[builder(setter(into, strip_option), default)]
-    /** Crop a specific section of the page */
+    /// Crop a specific section of the page
     pub crop: Option<Crop>,
     #[builder(setter(into, strip_option), default)]
-    /** Password to unlock encrypted PDFs */
+    /// Password to unlock encrypted PDFs
     pub password: Option<Password>,
-    /** Use pdftocairo instead of pdftoppm */
+    /// Use pdftocairo instead of pdftoppm
     #[builder(default)]
     pub pdftocairo: bool,
 }
@@ -109,37 +109,37 @@ impl RenderOptions {
     }
 }
 
+/// Password to unlock encrypted PDFs
 #[derive(Debug, Clone)]
-/** Password to unlock encrypted PDFs */
 pub enum Password {
     User(String),
     Owner(String),
 }
 
+/// Specifies resolution in terms of dots per inch
 #[derive(Debug, Clone)]
-/** Specifies resolution in terms of dots per inch */
 pub enum DPI {
-    /** DPI for both axes */
+    /// DPI for both axes
     Uniform(u32),
-    /** DPI for x and y axis */
+    /// DPI for x and y axis
     XY(u32, u32),
 }
 
+/// Scales pages to a certain number of pixels
 #[derive(Debug, Clone)]
-/** Scales pages to a certain number of pixels */
 pub enum Scale {
-    /** scales each page to fit within scale-to*scale-to pixel box */
+    /// scales each page to fit within scale-to*scale-to pixel box
     Uniform(u32),
-    /** scales each page horizontally to fit in scale-to-x pixels */
+    /// scales each page horizontally to fit in scale-to-x pixels
     X(u32),
-    /** scales each page vertically to fit in scale-to-y pixels */
+    /// scales each page vertically to fit in scale-to-y pixels
     Y(u32),
-    /** scales each page to fit within scale-to-x*scale-to-y pixel box */
+    ///  scales each page to fit within scale-to-x*scale-to-y pixel box
     XY(u32, u32),
 }
 
-#[derive(Debug, Clone)]
 /// Crop a specific section of the page
+#[derive(Debug, Clone)]
 pub struct Crop {
     inner: image::math::Rect,
 }
