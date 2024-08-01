@@ -1,8 +1,7 @@
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::{
-    io::Write,
-    process::{Command, Stdio},
-};
+use futures::{future::BoxFuture, stream::FuturesOrdered, TryStreamExt};
+use std::process::Stdio;
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 
 use crate::error::{PDF2ImageError, Result};
 use crate::render_options::RenderOptions;
@@ -15,6 +14,15 @@ pub struct PdfInfo {
 }
 
 impl PdfInfo {
+    pub async fn read(data: &[u8]) -> Result<Self> {
+        let (page_count, encrypted) = extract_pdf_info(data).await?;
+
+        Ok(Self {
+            page_count,
+            encrypted,
+        })
+    }
+
     /// Returns the number of pages in the PDF.
     pub fn page_count(&self) -> u32 {
         self.page_count
@@ -23,19 +31,6 @@ impl PdfInfo {
     /// Returns whether the PDF is encrypted.
     pub fn is_encrypted(&self) -> bool {
         self.encrypted
-    }
-}
-
-impl TryFrom<&[u8]> for PdfInfo {
-    type Error = PDF2ImageError;
-
-    fn try_from(value: &[u8]) -> std::result::Result<Self, Self::Error> {
-        let (page_count, encrypted) = extract_pdf_info(value)?;
-
-        Ok(Self {
-            page_count,
-            encrypted,
-        })
     }
 }
 
@@ -48,28 +43,27 @@ pub enum Pages {
 }
 
 /// Renders the PDF to images.
-pub fn render_pdf_single_page(
-    data: &[u8],
-    info: &PdfInfo,
+pub async fn render_pdf_single_page<'data, 'options: 'data>(
+    data: &'data [u8],
+    info: &'options PdfInfo,
     page: u32,
-    options: &RenderOptions,
+    options: &'options RenderOptions,
 ) -> Result<image::DynamicImage> {
     if info.encrypted && options.password.is_none() {
         return Err(PDF2ImageError::NoPasswordForEncryptedPDF);
     }
 
-    let cli_options = options.to_cli_args();
-    let image = render_page(data, page, &cli_options, options)?;
+    let image = render_page(data, page, options).await?;
 
     Ok(image)
 }
 
 /// Renders the PDF to images.
-pub fn render_pdf_multi_page(
-    data: &[u8],
-    info: &PdfInfo,
+pub async fn render_pdf_multi_page<'data, 'options: 'data>(
+    data: &'data [u8],
+    info: &'options PdfInfo,
     pages: Pages,
-    options: &RenderOptions,
+    options: &'options RenderOptions,
 ) -> Result<Vec<image::DynamicImage>> {
     if info.encrypted && options.password.is_none() {
         return Err(PDF2ImageError::NoPasswordForEncryptedPDF);
@@ -88,21 +82,24 @@ pub fn render_pdf_multi_page(
             .collect(),
     };
 
-    let cli_options = options.to_cli_args();
-
     pages_range
-        .par_iter()
-        .map(|page| render_page(data, *page, &cli_options, options))
-        .collect()
+        .into_iter()
+        .map(|page| -> BoxFuture<'data, Result<image::DynamicImage>> {
+            Box::pin(render_page(data, page, options))
+        })
+        .collect::<FuturesOrdered<BoxFuture<'data, Result<image::DynamicImage>>>>()
+        .try_collect()
+        .await
 }
 
 /// Renders a specific page from the pdf file
-fn render_page(
-    data: &[u8],
+async fn render_page<'data, 'options: 'data>(
+    data: &'data [u8],
     page: u32,
-    cli_options: &[String],
-    options: &RenderOptions,
+    options: &'options RenderOptions,
 ) -> Result<image::DynamicImage> {
+    let cli_options = options.to_cli_args();
+
     let executable = get_executable_path(if options.pdftocairo {
         "pdftocairo"
     } else {
@@ -130,13 +127,12 @@ fn render_page(
         // Pipe input and output for use
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn()
-        .expect("failed to execute process");
+        .spawn()?;
 
     // UNWRAP SAFETY: The child process is guaranteed to have a stdin as .stdin(Stdio::piped()) was called
-    child.stdin.as_mut().unwrap().write_all(data)?;
+    child.stdin.as_mut().unwrap().write_all(data).await?;
 
-    let output = child.wait_with_output()?;
+    let output = child.wait_with_output().await?;
     let image = image::load_from_memory_with_format(&output.stdout, image::ImageFormat::Jpeg)?;
 
     Ok(image)
@@ -158,7 +154,7 @@ pub fn get_executable_path(command: &str) -> String {
     return command.to_string();
 }
 
-pub fn extract_pdf_info(pdf: &[u8]) -> Result<(u32, bool)> {
+pub async fn extract_pdf_info(pdf: &[u8]) -> Result<(u32, bool)> {
     let mut child = Command::new(get_executable_path("pdfinfo"))
         .args(["-"])
         .stdin(Stdio::piped())
@@ -166,8 +162,8 @@ pub fn extract_pdf_info(pdf: &[u8]) -> Result<(u32, bool)> {
         .spawn()?;
 
     // UNWRAP SAFETY: The child process is guaranteed to have a stdin as .stdin(Stdio::piped()) was called
-    child.stdin.as_mut().unwrap().write_all(pdf)?;
-    let output = child.wait_with_output()?;
+    child.stdin.as_mut().unwrap().write_all(pdf).await?;
+    let output = child.wait_with_output().await?;
     let mut splits = output.stdout.split(|&x| x == b'\n');
 
     let page_count: u32 = splits
