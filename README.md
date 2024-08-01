@@ -3,6 +3,8 @@
 This crate is a modified version of https://github.com/styrowolf/pdf2image with some changes that make it easier and cheaper to render single pages and using async instead of rayon for rendering multiple pages
 and loading pdf data
 
+Provides functions for rendering a single page and one for rendering multiple pages
+
 A simplified port of Python's [`pdf2image`](https://github.com/Belval/pdf2image/) that wraps `pdftoppm`and `pdftocairo` (part of [poppler](https://poppler.freedesktop.org/)) to convert PDFs to `image::DynamicImage`s.
 
 ## Installation
