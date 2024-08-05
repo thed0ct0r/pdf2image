@@ -1,17 +1,27 @@
 # pdf2image
 
-This crate is a modified version of https://github.com/styrowolf/pdf2image with some changes that make it easier and cheaper to render single pages and using async instead of rayon for rendering multiple pages
-and loading pdf data
 
 Provides functions for rendering a single page and one for rendering multiple pages
 
-A simplified port of Python's [`pdf2image`](https://github.com/Belval/pdf2image/) that wraps `pdftoppm`and `pdftocairo` (part of [poppler](https://poppler.freedesktop.org/)) to convert PDFs to `image::DynamicImage`s.
+A simplified port of Python's [`pdf2image`](https://github.com/Belval/pdf2image/) that wraps `pdftoppm` and `pdftocairo` (part of [poppler](https://poppler.freedesktop.org/)) to convert PDFs to `image::DynamicImage`s.
+
+This library is a fork of https://github.com/styrowolf/pdf2image that replaces the usages of blocking multithreaded (rayon) with tokio async rendering. Which itself is a port of the python [pdf2image](https://github.com/Belval/pdf2image/) library.
+
+It wraps `pdftoppm` and `pdftocairo` (part of [Poppler](https://poppler.freedesktop.org/)) under the hood, uses the "pdfinfo" from poppler to determine basic info about the pdf (number of pages and whether its encrypted)
+
+This fork uses async rendering instead and allows the rendering of a single page or multiple pages with separate functions.
+
+> [!INFO]
+> You must have poppler installed on your system in order to use 
+> this program it depends on the pdfinfo and 
 
 ## Installation
 
-Add to your project: `cargo add pdf2image_alt`
-
 `pdf2image` requires `poppler` to be installed.
+
+```sh
+cargo add pdf2image_alt
+```
 
 ### Windows
 
