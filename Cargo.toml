@@ -1,10 +1,10 @@
 [package]
 name = "pdf2image-alt"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 readme = "README.md"
 license = "MIT"
-description = "Alternative version to pdf2imge with ability to render from borrowed data and single pages"
+description = "Alternative version to pdf2imge with ability to render from borrowed data and single pages, adds text extraction"
 homepage = "https://github.com/jacobtread/pdf2image"
 repository = "https://github.com/jacobtread/pdf2image"
 keywords = ["pdf", "image", "conversion", "poppler", "pdf2img"]
