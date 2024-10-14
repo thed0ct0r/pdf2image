@@ -69,7 +69,7 @@ pub async fn render_pdf_multi_page<'data, 'options: 'data>(
         return Err(PDF2ImageError::NoPasswordForEncryptedPDF);
     }
 
-    let valid_range = 0..=info.page_count;
+    let valid_range = 1..=info.page_count;
 
     let pages_range: Vec<u32> = match pages {
         Pages::All => valid_range.collect(),
